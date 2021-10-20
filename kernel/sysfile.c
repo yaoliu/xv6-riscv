@@ -321,8 +321,28 @@ sys_open(void)
     end_op();
     return -1;
   }
-  // 在此处添加对symkink的处理
-  
+  // 在此处添加对symlink的处理
+  if(ip->type == T_SYMLINK){
+    // target_path
+    char target[MAXPATH];
+    // 考虑禁止套娃 所以要不要限制一下？
+    int cycle = 0;
+    // 处理循环软连接
+    while (ip->type == T_SYMLINK)
+    {
+      // 把data block数据写到target上
+      memset(target,0,sizeof(target));
+      readi(ip,0,(uint64)target,0,MAXPATH);
+      iunlockput(ip);
+      if((ip = namei(target)) == 0 )
+      {
+          end_op();
+          return -1;
+      }
+      ilock(ip);
+    }
+  }
+
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
