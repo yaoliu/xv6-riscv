@@ -484,3 +484,32 @@ sys_pipe(void)
   }
   return 0;
 }
+
+uint64
+sys_symlink(void)
+{
+  // 软连接 ln -s source_path target_path 
+  char source[MAXPATH];
+  char target[MAXPATH];
+
+  if (argstr(0,target,MAXPATH) < 0 || argstr(1,source,MAXPATH) < 0) {
+
+    return -1;
+  }
+// 1. 为目标路径分配inode
+
+struct inode *ip; 
+begin_op();
+if (ip = create(target,T_SYMLINK,0,0) == 0 ){
+  end_op();
+  return -1;
+} 
+// 2. 把source_path 写入到data block中
+if(writei(ip, 0, (uint64)source, 0, MAXPATH) != MAXPATH){
+  return -1;
+};
+
+iunlockput(ip);
+end_op();
+return 0;
+}
