@@ -321,7 +321,8 @@ sys_open(void)
     end_op();
     return -1;
   }
-
+  // 在此处添加对symkink的处理
+  
   if((f = filealloc()) == 0 || (fd = fdalloc(f)) < 0){
     if(f)
       fileclose(f);
