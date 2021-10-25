@@ -327,7 +327,7 @@ sys_open(void)
     char target[MAXPATH];
     // 考虑禁止套娃 所以要不要限制一下？
     int cycle = 0;
-    // 处理循环软连接
+    // 
     while (ip->type == T_SYMLINK)
     {
       // 把data block数据写到target上
@@ -517,20 +517,20 @@ sys_symlink(void)
 
     return -1;
   }
-// 1. 为目标路径分配inode
+  // 1. 为目标路径分配inode
 
-struct inode *ip; 
-begin_op();
-if (ip = create(target,T_SYMLINK,0,0) == 0 ){
+  struct inode *ip; 
+  begin_op();
+  if (ip = create(target,T_SYMLINK,0,0) == 0 ){
+    end_op();
+    return -1;
+  } 
+  // 2. 把source_path 写入到data block中
+  if(writei(ip, 0, (uint64)source, 0, MAXPATH) != MAXPATH){
+    return -1;
+  };
+
+  iunlockput(ip);
   end_op();
-  return -1;
-} 
-// 2. 把source_path 写入到data block中
-if(writei(ip, 0, (uint64)source, 0, MAXPATH) != MAXPATH){
-  return -1;
-};
-
-iunlockput(ip);
-end_op();
-return 0;
+  return 0;
 }
