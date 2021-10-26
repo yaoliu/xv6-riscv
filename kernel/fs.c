@@ -379,7 +379,7 @@ bmap(struct inode *ip, uint bn) // bn = block number
 {
   uint addr, *a;
   struct buf *bp;
-  // 直接块表
+  // 在直接块表中查找
   if(bn < NDIRECT){
     if((addr = ip->addrs[bn]) == 0)
       ip->addrs[bn] = addr = balloc(ip->dev);
@@ -389,7 +389,7 @@ bmap(struct inode *ip, uint bn) // bn = block number
 
   if(bn < NINDIRECT ){
     // Load indirect block, allocating if necessary.
-    // 1级块表 如果 = 0 则分配一个data block 用来存块表 256个
+    // 1级块表 如果 = 0 则分配一个data block 用来存256个块表 1 data block = 2 setor = 1024字节 = 4 * 256 
     if((addr = ip->addrs[NDIRECT]) == 0)
       ip->addrs[NDIRECT] = addr = balloc(ip->dev);
     bp = bread(ip->dev, addr);
@@ -400,6 +400,35 @@ bmap(struct inode *ip, uint bn) // bn = block number
       log_write(bp);
     }
     brelse(bp);
+    return addr;
+  }
+
+  bn -= NINDIRECT;
+  
+  uint index = bn / NINDIRECT;
+  uint offset = bn % NINDIRECT;
+  // 二级块表
+  if (bn < NINDIRECT * NINDIRECT) {
+    if ((addr = ip->addrs[NDIRECT+1]) == 0 )
+      ip->addrs[NDIRECT+1] = addr = balloc(ip->dev);
+    bp = bread(ip->dev,addr);
+    a = (uint*)bp->data;
+    // 分配块
+    if (addr = a[index] == 0 ){
+      a[index] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+  
+    bp = bread(ip->dev,addr);
+
+    a = (uint*)bp->data;
+    if ((addr = a[offset]) == 0 ){
+      a[offset] = addr = balloc(ip->dev);
+      log_write(bp);
+    }
+    brelse(bp);
+    
     return addr;
   }
 
