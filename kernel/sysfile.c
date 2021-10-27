@@ -326,7 +326,7 @@ sys_open(void)
     // target_path
     char target[MAXPATH];
     // 考虑禁止套娃 所以要不要限制一下？
-    int cycle = 0;
+    // int cycle = 0;
     // 
     while (ip->type == T_SYMLINK)
     {
@@ -521,7 +521,7 @@ sys_symlink(void)
 
   struct inode *ip; 
   begin_op();
-  if (ip = create(target,T_SYMLINK,0,0) == 0 ){
+  if ((ip = create(target,T_SYMLINK,0,0)) == 0 ){
     end_op();
     return -1;
   } 

@@ -414,12 +414,12 @@ bmap(struct inode *ip, uint bn) // bn = block number
     bp = bread(ip->dev,addr);
     a = (uint*)bp->data;
     // 分配块
-    if (addr = a[index] == 0 ){
+    if ((addr = a[index]) == 0 ){
       a[index] = addr = balloc(ip->dev);
       log_write(bp);
     }
     brelse(bp);
-  
+
     bp = bread(ip->dev,addr);
 
     a = (uint*)bp->data;
@@ -440,8 +440,8 @@ bmap(struct inode *ip, uint bn) // bn = block number
 void
 itrunc(struct inode *ip)
 {
-  int i, j;
-  struct buf *bp;
+  int i, j, z;
+  struct buf *bp, *bp2;
   uint *a;
 
   for(i = 0; i < NDIRECT; i++){
@@ -462,7 +462,24 @@ itrunc(struct inode *ip)
     bfree(ip->dev, ip->addrs[NDIRECT]);
     ip->addrs[NDIRECT] = 0;
   }
-
+  // 释放2级块表 256 * 256
+  if(ip->addrs[NDIRECT+1]){
+    bp = bread(ip->dev, ip->addrs[NDIRECT+1]);
+    a = (uint*)bp->data;
+    for(j = 0; j < NINDIRECT; j++){
+        bp2 = bread(ip->dev,a[j]);
+        a = (uint*)bp2->data;
+        for(z = 0; z< NINDIRECT; z++){
+          if(a[z])
+            bfree(ip->dev,a[z]);
+        }
+        brelse(bp2);
+        bfree(ip->dev,a[j]);
+    }
+    brelse(bp);
+    bfree(ip->dev, ip->addrs[NDIRECT+1]);
+    ip->addrs[NDIRECT+1] = 0;
+  }
   ip->size = 0;
   iupdate(ip);
 }
