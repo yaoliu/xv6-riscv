@@ -322,27 +322,27 @@ sys_open(void)
     return -1;
   }
   // 在此处添加对symlink的处理
-  if(omode == O_NOFOLLOW && (ip->type == T_SYMLINK)){
-    // target_path
-    char target[MAXPATH];
-    int cycle = 0;
-    while (ip->type == T_SYMLINK){
-      if(cycle == 10){
-        iunlockput(ip);
-        end_op();
-        return -1;
-      }
-      cycle++;
-      // 把data block数据写到target上
-      memset(target,0,sizeof(target));
-      readi(ip,0,(uint64)target,0,MAXPATH);
-      iunlockput(ip);
-      if((ip = namei(target)) == 0 )
-      {
+  if(ip->type == T_SYMLINK){
+    if(!(omode & O_NOFOLLOW)){
+      char target[MAXPATH];
+      int cycle = 0;
+      while(ip->type == T_SYMLINK){
+        if(cycle == 10){
+          iunlockput(ip);
           end_op();
           return -1;
+        }
+        cycle++;
+        // 把data block数据写到target上
+        memset(target,0,sizeof(target));
+        readi(ip,0,(uint64)target,0,MAXPATH);
+        iunlockput(ip);
+        if((ip = namei(target)) == 0 ){
+          end_op();
+          return -1;
+        }
+        ilock(ip);
       }
-      ilock(ip);
     }
   }
 
@@ -514,6 +514,8 @@ sys_symlink(void)
 {
   // 软连接 ln -s target path
   char target[MAXPATH];
+  memset(target,0,sizeof(target));
+  
   char path[MAXPATH];
 
   if (argstr(0,target,MAXPATH) < 0 || argstr(1,path,MAXPATH) < 0) {
@@ -522,6 +524,7 @@ sys_symlink(void)
   }
   // 为path分配inode
   struct inode *ip; 
+
   begin_op();
   if ((ip = create(path,T_SYMLINK,0,0)) == 0 ){
     end_op();
@@ -530,7 +533,7 @@ sys_symlink(void)
   //把target 写入到data block中
   if(writei(ip, 0, (uint64)target, 0, MAXPATH) != MAXPATH){
     return -1;
-  };
+  }
 
   iunlockput(ip);
   end_op();
