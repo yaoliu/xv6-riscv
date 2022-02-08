@@ -27,6 +27,7 @@ void
 kinit()
 {
   initlock(&kmem.lock, "kmem");
+  // 分配页
   freerange(end, (void*)PHYSTOP);
 }
 
@@ -62,9 +63,11 @@ kfree(void *pa)
   release(&kmem.lock);
 }
 
-// Allocate one 4096-byte page of physical memory.
+// Allocate one 4096-byte page of phys1ical memory.
 // Returns a pointer that the kernel can use.
 // Returns 0 if the memory cannot be allocated.
+// 从大的物理地址开始分配
+// 
 void *
 kalloc(void)
 {
@@ -77,6 +80,6 @@ kalloc(void)
   release(&kmem.lock);
 
   if(r)
-    memset((char*)r, 5, PGSIZE); // fill with junk
+    memset((char*)r, 5, PGSIZE); // fill with junk // 装满垃圾
   return (void*)r;
 }

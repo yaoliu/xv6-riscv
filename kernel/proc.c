@@ -37,6 +37,7 @@ proc_mapstacks(pagetable_t kpgtbl) {
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
+    // 为进程分配内核栈
     uint64 va = KSTACK((int) (p - proc));
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
@@ -121,6 +122,7 @@ found:
   p->state = USED;
 
   // Allocate a trapframe page.
+  // 为trapframe分配一个物理页
   if((p->trapframe = (struct trapframe *)kalloc()) == 0){
     freeproc(p);
     release(&p->lock);
@@ -138,6 +140,7 @@ found:
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
+  // 进程创建后要从内核态切回用户态需要执行forkret 所以ra寄存器保存了forkret指令
   p->context.ra = (uint64)forkret;
   p->context.sp = p->kstack + PGSIZE;
 
@@ -174,6 +177,7 @@ proc_pagetable(struct proc *p)
   pagetable_t pagetable;
 
   // An empty page table.
+  // 分配一个空页 如果返回0 则页已经分配完了 如果分配成功 则填充0
   pagetable = uvmcreate();
   if(pagetable == 0)
     return 0;

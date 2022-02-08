@@ -11,15 +11,15 @@
 //
 // mkfs computes the super block and builds an initial file system. The
 // super block describes the disk layout:
-struct superblock {
+struct superblock {  // 超级块
   uint magic;        // Must be FSMAGIC
-  uint size;         // Size of file system image (blocks)
-  uint nblocks;      // Number of data blocks
-  uint ninodes;      // Number of inodes.
-  uint nlog;         // Number of log blocks
-  uint logstart;     // Block number of first log block
-  uint inodestart;   // Block number of first inode block
-  uint bmapstart;    // Block number of first free map block
+  uint size;         // Size of file system image (blocks) 
+  uint nblocks;      // Number of data blocks // 数据块 数量 默认 954
+  uint ninodes;      // Number of inodes. // inode 块 数量 默认 10
+  uint nlog;         // Number of log blocks // log 块 数量 默认 13
+  uint logstart;     // Block number of first log block 日志块开始位置
+  uint inodestart;   // Block number of first inode block 索引节点块开始位置
+  uint bmapstart;    // Block number of first free map block // bitmap块开始位置
 };
 
 #define FSMAGIC 0x10203040
@@ -29,14 +29,14 @@ struct superblock {
 // 11 + 256 + 256 * 256
 #define MAXFILE (NDIRECT + NINDIRECT + NINDIRECT * NINDIRECT)
 
-// On-disk inode structure
+// On-disk inode structure // 存储在磁盘中的索引节点的数据结构
 struct dinode {
-  short type;           // File type
+  short type;           // File type // 索引节点类型 该索引节点是文件还是目录
   short major;          // Major device number (T_DEVICE only)
   short minor;          // Minor device number (T_DEVICE only)
   short nlink;          // Number of links to inode in file system
   uint size;            // Size of file (bytes)
-  uint addrs[NDIRECT+2];   // Data block addresses
+  uint addrs[NDIRECT+1];   // Data block addresses
 };
 
 // Inodes per block.

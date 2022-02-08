@@ -28,6 +28,7 @@ start()
 
   // set M Exception Program Counter to main, for mret.
   // requires gcc -mcmodel=medany
+  // mepc 储存中断前执行指令的地址，调用 mret 返回后会执行其中的地址
   w_mepc((uint64)main);
 
   // disable paging for now.
@@ -51,6 +52,7 @@ start()
   w_tp(id);
 
   // switch to supervisor mode and jump to main().
+  // 执行mepc寄存器中存储的地址 main函数
   asm volatile("mret");
 }
 

@@ -102,13 +102,18 @@ read_head(void)
 static void
 write_head(void)
 {
+  // 取出日志块
   struct buf *buf = bread(log.dev, log.start);
+  // 读取log头
   struct logheader *hb = (struct logheader *) (buf->data);
   int i;
+  // 把n写到头里
   hb->n = log.lh.n;
+  // 把header里的块写进去
   for (i = 0; i < log.lh.n; i++) {
     hb->block[i] = log.lh.block[i];
   }
+  // 写入磁盘
   bwrite(buf);
   brelse(buf);
 }
@@ -181,9 +186,13 @@ write_log(void)
   int tail;
 
   for (tail = 0; tail < log.lh.n; tail++) {
+    // 读取日志块
     struct buf *to = bread(log.dev, log.start+tail+1); // log block
+    // 读取数据块
     struct buf *from = bread(log.dev, log.lh.block[tail]); // cache block
+    // 将数据块中的数据 复制到 日志块
     memmove(to->data, from->data, BSIZE);
+    // 将日志块写入磁盘
     bwrite(to);  // write the log
     brelse(from);
     brelse(to);

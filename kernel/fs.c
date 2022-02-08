@@ -27,6 +27,7 @@
 struct superblock sb; 
 
 // Read the super block.
+// 将磁盘中的超级块数据 读取到内存中
 static void
 readsb(int dev, struct superblock *sb)
 {
@@ -61,6 +62,7 @@ bzero(int dev, int bno)
 // Blocks.
 
 // Allocate a zeroed disk block.
+// 分配 空的数据块
 static uint
 balloc(uint dev)
 {
@@ -69,6 +71,7 @@ balloc(uint dev)
 
   bp = 0;
   for(b = 0; b < sb.size; b += BPB){
+    // 从bitmap块中找到空闲的块
     bp = bread(dev, BBLOCK(b, sb));
     for(bi = 0; bi < BPB && b + bi < sb.size; bi++){
       m = 1 << (bi % 8);
@@ -192,21 +195,27 @@ static struct inode* iget(uint dev, uint inum);
 // Allocate an inode on device dev.
 // Mark it as allocated by  giving it type type.
 // Returns an unlocked but allocated and referenced inode.
+// 分配索引节点号
 struct inode*
 ialloc(uint dev, short type)
 {
   int inum;
   struct buf *bp;
   struct dinode *dip;
-
+  // 根据超级块中的索引节点号数量进行遍历 从索引节点块里获取索引节点数据 找到空闲的索引节点(type=0)
   for(inum = 1; inum < sb.ninodes; inum++){
+    // IBLOCK宏 可以根据索引节点号计算出所在位置 也就是在哪个索引节点块上 并获取这个块
     bp = bread(dev, IBLOCK(inum, sb));
+    // 根据索引节点号在对应块中找到完整的索引节点数据
     dip = (struct dinode*)bp->data + inum%IPB;
+    // 判断是不是空闲的索引节点
     if(dip->type == 0){  // a free inode
       memset(dip, 0, sizeof(*dip));
+      // 设置索引节点类型
       dip->type = type;
       log_write(bp);   // mark it allocated on the disk
       brelse(bp);
+      // 返回索引节点
       return iget(dev, inum);
     }
     brelse(bp);
@@ -218,6 +227,7 @@ ialloc(uint dev, short type)
 // Must be called after every change to an ip->xxx field
 // that lives on disk.
 // Caller must hold ip->lock.
+// 将内存中的索引数据写入到磁盘中
 void
 iupdate(struct inode *ip)
 {
@@ -578,20 +588,23 @@ struct inode*
 dirlookup(struct inode *dp, char *name, uint *poff)
 {
   uint off, inum;
+  // 目录项
   struct dirent de;
-
+  // 判断是否为目录
   if(dp->type != T_DIR)
     panic("dirlookup not DIR");
-
+  // 每次读取一个目录项
   for(off = 0; off < dp->size; off += sizeof(de)){
     if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
       panic("dirlookup read");
     if(de.inum == 0)
       continue;
+    // 判断是否一样
     if(namecmp(name, de.name) == 0){
       // entry matches path element
       if(poff)
         *poff = off;
+      // 根据inode number 查找inode
       inum = de.inum;
       return iget(dp->dev, inum);
     }
@@ -601,6 +614,7 @@ dirlookup(struct inode *dp, char *name, uint *poff)
 }
 
 // Write a new directory entry (name, inum) into the directory dp.
+// 将目录项 插入到父级数据内
 int
 dirlink(struct inode *dp, char *name, uint inum)
 {
@@ -615,6 +629,7 @@ dirlink(struct inode *dp, char *name, uint inum)
   }
 
   // Look for an empty dirent.
+  // 把新的目录项写入到最后面
   for(off = 0; off < dp->size; off += sizeof(de)){
     if(readi(dp, 0, (uint64)&de, off, sizeof(de)) != sizeof(de))
       panic("dirlink read");
@@ -679,12 +694,15 @@ namex(char *path, int nameiparent, char *name)
   struct inode *ip, *next;
 
   if(*path == '/')
+    // 如果是根目录 ‘/’ 获取对应inode
     ip = iget(ROOTDEV, ROOTINO);
   else
+    // 当前进程所在目录 对应的inode
     ip = idup(myproc()->cwd);
-
+  // 获取文件名称
   while((path = skipelem(path, name)) != 0){
     ilock(ip);
+    // 判断inode 是否为 目录
     if(ip->type != T_DIR){
       iunlockput(ip);
       return 0;

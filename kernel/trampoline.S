@@ -23,7 +23,7 @@ uservec:
         # sscratch points to where the process's p->trapframe is
         # mapped into user space, at TRAPFRAME.
         #
-        
+        # sscratch 保存的是TRAPFRAME内存地址(地址唯一) 相当于把以下寄存器信息都保存到TRAPFRAME中
 	# swap a0 and sscratch
         # so that a0 is TRAPFRAME
         csrrw a0, sscratch, a0
@@ -63,7 +63,7 @@ uservec:
 	# save the user a0 in p->trapframe->a0
         csrr t0, sscratch
         sd t0, 112(a0)
-
+        # 恢复内核栈
         # restore kernel stack pointer from p->trapframe->kernel_sp
         ld sp, 8(a0)
 
@@ -71,10 +71,12 @@ uservec:
         ld tp, 32(a0)
 
         # load the address of usertrap(), p->trapframe->kernel_trap
+        // 从 16(a0)的代码usertrap 加载到 t0 寄存器上
         ld t0, 16(a0)
 
         # restore kernel page table from p->trapframe->kernel_satp
         ld t1, 0(a0)
+        // 内核页
         csrw satp, t1
         sfence.vma zero, zero
 
@@ -82,6 +84,7 @@ uservec:
         # table does not specially map p->tf.
 
         # jump to usertrap(), which does not return
+        # 执行t0上的指令 也就是usertrap
         jr t0
 
 .globl userret

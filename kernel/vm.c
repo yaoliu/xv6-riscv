@@ -20,29 +20,63 @@ pagetable_t
 kvmmake(void)
 {
   pagetable_t kpgtbl;
-
+  // 分配一个页给kernel使用
   kpgtbl = (pagetable_t) kalloc();
+  // 页地址0x87fff000
+  // 填充0 按照字节填充 4096个字节 4096个0
   memset(kpgtbl, 0, PGSIZE);
-
+  // io 设备 虚拟内存地址与物理内存地址映射相同
   // uart registers
+  // 页表->0->128->0
+  // gdb 
+  // print/x (*kpgtbl >> 10) << 12 = 0x87ffe000
+  // print/x ((*(0x87ffe000 + 8 * 128)) >> 10) << 12 = 0x87ffd000
+  // print/x (*0x87ffd000 >> 10) << 12 = 0x10000000L
   kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
 
+  
+
   // virtio mmio disk interface
+  // 页表->0->128->1
+  // gdb
+  // print/x (*kpgtbl >> 10) << 12 = 0x87ffe000
+  // print/x ((*(0x87ffe000 + 8 * 128)) >> 10) << 12 = 0x87ffd000
+  // print/x ((*(0x87ffd000 +8)) >> 10) << 12 = 0x10001000
   kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
-
+  vmprint(kpgtbl);
   // PLIC
+  // 页表->0->96->0
+  // gdb
+  // print/x (*kpgtbl >> 10) << 12 = 0x87ffe000
+  // print/x ((*(0x87ffe000 + 8 * 96)) >> 10) << 12 = 0x87ffc000
+  // print/x (*0x87ffc000 >> 10) << 12 = 0xc000000
   kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
-
+  
+ 
   // map kernel text executable and read-only.
+  // 页表->2->0->0
+  // print/x ((*(0x87fff000 + 0x10)) >> 10) << 12 = 0x87ffa000
+  // print/x ((*0x87ffa000) >> 10) << 12 = 0x87ff9000
+  // print/x ((*0x87ff9000) >> 10) << 12 =  0x80000000
   kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
 
   // map kernel data and the physical RAM we'll make use of.
+  // 页表->2->0->8
+  // etext = 0x80008000L
+  // print/x ((*(0x87fff000 + 0x10)) >> 10) << 12 = 0x87ffa000
+  // print/x ((*0x87ffa000) >> 10) << 12 = 0x87ff9000
+  // print/x ((*(0x87ff9000 + 8*8)) >> 10) << 12 = 0x80008000
   kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
 
   // map the trampoline for trap entry/exit to
   // the highest virtual address in the kernel.
+  // 页表255->511->511
+  // print/x (*(0x87fff000 + 8*255) >> 10) << 12 = 0x87fb9000
+  // print/x (*(0x87fb9000 + 8*511) >> 10) << 12 = 0x87fb8000
+  // print/x (*(0x87fb8000 + 8*511) >> 10) << 12 = 0x80007000
   kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
 
+  
   // map kernel stacks
   proc_mapstacks(kpgtbl);
   
@@ -82,15 +116,21 @@ walk(pagetable_t pagetable, uint64 va, int alloc)
 {
   if(va >= MAXVA)
     panic("walk");
-
+  // 当处理器从内存加载或者存储数据时，基本上都要做3次内存查找，第一次在最高级的page directory，第二次在中间级的page directory，最后一次在最低级的page directory。
   for(int level = 2; level > 0; level--) {
+    // 2->1->0 
+    // PX(level, va) 会计算虚拟内存地址所对应的index号
     pte_t *pte = &pagetable[PX(level, va)];
+    // 判断当前PTE是否合法 如果合法才可以做地址翻译
+    // 进行与运算 两者同时为1则为true 
     if(*pte & PTE_V) {
       pagetable = (pagetable_t)PTE2PA(*pte);
     } else {
+      // 如果PTE不合法则需要分配页 返回物理内存地址
       if(!alloc || (pagetable = (pde_t*)kalloc()) == 0)
         return 0;
       memset(pagetable, 0, PGSIZE);
+      // 物理地址转PTE 并设置到对应地址上
       *pte = PA2PTE(pagetable) | PTE_V;
     }
   }
@@ -142,20 +182,25 @@ mappages(pagetable_t pagetable, uint64 va, uint64 size, uint64 pa, int perm)
 
   if(size == 0)
     panic("mappages: size");
-  
+  // 页开始
   a = PGROUNDDOWN(va);
+  // 页结束
   last = PGROUNDDOWN(va + size - 1);
   for(;;){
+    // 把虚拟内存地址映射到一个pte上并返回指针
     if((pte = walk(pagetable, a, 1)) == 0)
       return -1;
     if(*pte & PTE_V)
       panic("mappages: remap");
+    // 把物理地址和权限放到PTE中
     *pte = PA2PTE(pa) | perm | PTE_V;
+    // 分配完毕就可以结束了
     if(a == last)
       break;
     a += PGSIZE;
     pa += PGSIZE;
   }
+  // 正常情况返回0
   return 0;
 }
 
@@ -430,5 +475,31 @@ copyinstr(pagetable_t pagetable, char *dst, uint64 srcva, uint64 max)
     return 0;
   } else {
     return -1;
+  }
+}
+
+
+
+void 
+vmprint(pagetable_t pagetable){
+  printf("page table %p\n",pagetable);
+  _vmprint(pagetable,0);
+}
+
+void _vmprint(pagetable_t pagetable, int level)
+{
+  for(int i = 0; i < 512; i++) {
+    pte_t pte = pagetable[i];
+    if (pte & PTE_V) {
+      for (int f = 0; f < level + 1; f++){
+        printf(".. ");  
+      }
+      pagetable_t child = (pagetable_t)PTE2PA(pte);
+      uint64 flags = PTE_FLAGS(pte);
+      printf("%d: pte %p pa %p fl %p \n",i,pte,child,flags);
+      if ((pte & PTE_V) && (pte & (PTE_R|PTE_W|PTE_W)) == 0) {
+        _vmprint(child,level+1);
+      }
+    }
   }
 }

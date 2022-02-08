@@ -22,7 +22,7 @@
 #include "defs.h"
 #include "fs.h"
 #include "buf.h"
-
+// 存储所有块缓存
 struct {
   struct spinlock lock;
   struct buf buf[NBUF];
@@ -32,14 +32,14 @@ struct {
   // head.next is most recent, head.prev is least.
   struct buf head;
 } bcache;
-
+// 初始化块缓存
 void
 binit(void)
 {
   struct buf *b;
 
   initlock(&bcache.lock, "bcache");
-
+  // 初始化链表
   // Create linked list of buffers
   bcache.head.prev = &bcache.head;
   bcache.head.next = &bcache.head;
@@ -55,13 +55,14 @@ binit(void)
 // Look through buffer cache for block on device dev.
 // If not found, allocate a buffer.
 // In either case, return locked buffer.
+// 根据设备号和块号获取对于的缓存块
 static struct buf*
 bget(uint dev, uint blockno)
 {
   struct buf *b;
 
   acquire(&bcache.lock);
-
+  // 如果从缓存里可以获取到 就计数+1 并且返回该数据结构
   // Is the block already cached?
   for(b = bcache.head.next; b != &bcache.head; b = b->next){
     if(b->dev == dev && b->blockno == blockno){
@@ -95,13 +96,14 @@ bread(uint dev, uint blockno)
   struct buf *b;
 
   b = bget(dev, blockno);
+  // 如果找不到 则从磁盘里读取
   if(!b->valid) {
     virtio_disk_rw(b, 0);
     b->valid = 1;
   }
   return b;
 }
-
+// 将内容写入磁盘
 // Write b's contents to disk.  Must be locked.
 void
 bwrite(struct buf *b)
