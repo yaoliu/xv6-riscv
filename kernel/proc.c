@@ -37,7 +37,7 @@ proc_mapstacks(pagetable_t kpgtbl) {
     char *pa = kalloc();
     if(pa == 0)
       panic("kalloc");
-    // 为进程分配内核栈
+    // 为进程分配内核栈 该栈va和pa保存在内核页表中
     uint64 va = KSTACK((int) (p - proc));
     kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
   }
@@ -53,7 +53,7 @@ procinit(void)
   initlock(&wait_lock, "wait_lock");
   for(p = proc; p < &proc[NPROC]; p++) {
       initlock(&p->lock, "proc");
-      p->kstack = KSTACK((int) (p - proc));
+      // p->kstack = KSTACK((int) (p - proc));
   }
 }
 
@@ -137,6 +137,12 @@ found:
     return 0;
   }
 
+  p->kpagetable = proc_kpagetable(p);;
+  if (p->kpagetable == 0){
+    freeproc(p);
+    release(&p->lock);
+    return 0;
+  }
   // Set up new context to start executing at forkret,
   // which returns to user space.
   memset(&p->context, 0, sizeof(p->context));
@@ -146,6 +152,8 @@ found:
 
   return p;
 }
+
+
 
 // free a proc structure and the data hanging from it,
 // including user pages.
@@ -159,6 +167,14 @@ freeproc(struct proc *p)
   if(p->pagetable)
     proc_freepagetable(p->pagetable, p->sz);
   p->pagetable = 0;
+  if(p->kpagetable){
+    if(p->kstack){
+      kvmunmap(p->kpagetable,p->kstack,1,0);
+    }
+    proc_freekpagetable(p->kpagetable);
+  }
+  p->kpagetable = 0;
+  p->kstack = 0;
   p->sz = 0;
   p->pid = 0;
   p->parent = 0;
@@ -167,6 +183,27 @@ freeproc(struct proc *p)
   p->killed = 0;
   p->xstate = 0;
   p->state = UNUSED;
+}
+
+
+pagetable_t
+proc_kpagetable(struct proc *p)
+{
+  // 给进程分配内核页表
+  pagetable_t kpgtbl;
+
+  kpgtbl = kuvmmake();
+
+  char *pa = kalloc();
+  if(pa == 0)
+    panic("kalloc");
+  uint64 va = KSTACK((int) (0));
+
+  kvmmap(kpgtbl, va, (uint64)pa, PGSIZE, PTE_R | PTE_W);
+  p->kstack = va;
+  // void *kspa = (void *)kwalkaddr(kpgtbl,va);
+  // printf("kpgtable = %p va = %p pa = %p kspa = %p\n",kpgtbl,va,pa,kspa);
+  return kpgtbl;
 }
 
 // Create a user page table for a given process,
@@ -211,6 +248,12 @@ proc_freepagetable(pagetable_t pagetable, uint64 sz)
   uvmunmap(pagetable, TRAMPOLINE, 1, 0);
   uvmunmap(pagetable, TRAPFRAME, 1, 0);
   uvmfree(pagetable, sz);
+}
+
+void
+proc_freekpagetable(pagetable_t kpagetable)
+{
+  kvmfree(kpagetable);
 }
 
 // a user program that calls exec("/init")
@@ -361,7 +404,7 @@ exit(int status)
   iput(p->cwd);
   end_op();
   p->cwd = 0;
-
+ 
   acquire(&wait_lock);
 
   // Give any children to init.
@@ -457,8 +500,9 @@ scheduler(void)
         // before jumping back to us.
         p->state = RUNNING;
         c->proc = p;
+        kvmswitchpgtbl(p->kpagetable);
         swtch(&c->context, &p->context);
-
+        kvminithart();
         // Process is done running for now.
         // It should have changed its p->state before coming back.
         c->proc = 0;

@@ -87,7 +87,7 @@ kvmmake(void)
 void
 kvminit(void)
 {
-  kernel_pagetable = kvmmake();
+  kernel_pagetable = kuvmmake();
 }
 
 // Switch h/w page table register to the kernel's page table,
@@ -98,6 +98,30 @@ kvminithart()
   w_satp(MAKE_SATP(kernel_pagetable));
   sfence_vma();
 }
+
+void kvmswitchpgtbl(pagetable_t pagetable){
+    w_satp(MAKE_SATP(pagetable));
+    sfence_vma();
+}
+
+pagetable_t kuvmmake()
+{
+  pagetable_t kpgtbl;
+
+  kpgtbl = (pagetable_t) kalloc();
+
+  memset(kpgtbl, 0, PGSIZE);
+
+  kvmmap(kpgtbl, UART0, UART0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(kpgtbl, VIRTIO0, VIRTIO0, PGSIZE, PTE_R | PTE_W);
+  kvmmap(kpgtbl, PLIC, PLIC, 0x400000, PTE_R | PTE_W);
+  kvmmap(kpgtbl, KERNBASE, KERNBASE, (uint64)etext-KERNBASE, PTE_R | PTE_X);
+  kvmmap(kpgtbl, (uint64)etext, (uint64)etext, PHYSTOP-(uint64)etext, PTE_R | PTE_W);
+  kvmmap(kpgtbl, TRAMPOLINE, (uint64)trampoline, PGSIZE, PTE_R | PTE_X);
+
+  return kpgtbl;
+} 
+
 
 // Return the address of the PTE in page table pagetable
 // that corresponds to virtual address va.  If alloc!=0,
@@ -148,7 +172,6 @@ walkaddr(pagetable_t pagetable, uint64 va)
 
   if(va >= MAXVA)
     return 0;
-
   pte = walk(pagetable, va, 0);
   if(pte == 0)
     return 0;
@@ -156,6 +179,25 @@ walkaddr(pagetable_t pagetable, uint64 va)
     return 0;
   if((*pte & PTE_U) == 0)
     return 0;
+  pa = PTE2PA(*pte);
+  return pa;
+}
+// Look up a virtual address, return the physical address,
+// or 0 if not mapped.
+// Can only be used to look up kernel pages.
+uint64
+kwalkaddr(pagetable_t pagetable, uint64 va)
+{
+  pte_t *pte;
+  uint64 pa;
+
+  if(va >= MAXVA)
+    return 0;
+  pte = walk(pagetable, va, 0);
+  if((*pte & PTE_V) == 0)
+    return 0;
+  // if ((*pte & PTE_U) == 1)
+  //   return 0;
   pa = PTE2PA(*pte);
   return pa;
 }
@@ -218,6 +260,7 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
 
   for(a = va; a < va + npages*PGSIZE; a += PGSIZE){
     if((pte = walk(pagetable, a, 0)) == 0)
+      // printf("xx-%p\n",a);
       panic("uvmunmap: walk");
     if((*pte & PTE_V) == 0)
       panic("uvmunmap: not mapped");
@@ -229,6 +272,11 @@ uvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
     }
     *pte = 0;
   }
+}
+void
+kvmunmap(pagetable_t pagetable, uint64 va, uint64 npages, int do_free)
+{
+  uvmunmap(pagetable, va, npages, do_free);
 }
 
 // create an empty user page table.
@@ -326,6 +374,21 @@ freewalk(pagetable_t pagetable)
   kfree((void*)pagetable);
 }
 
+void
+kfreewalk(pagetable_t kpagetable)
+{
+  for (int i = 0; i < 512; i++) {
+		pte_t pte = kpagetable[i];
+		if (pte & PTE_V) {
+      // 内核页表里的映射不满足PTE_R|PTE_W|PTE_X
+			if ((pte & (PTE_R|PTE_W|PTE_X)) == 0) {
+				uint64 child = PTE2PA(pte);
+				kfreewalk((pagetable_t)child);
+			}
+		}
+	}
+	kfree((void*)kpagetable);
+}
 // Free user memory pages,
 // then free page-table pages.
 void
@@ -336,6 +399,10 @@ uvmfree(pagetable_t pagetable, uint64 sz)
   freewalk(pagetable);
 }
 
+void kvmfree(pagetable_t pagetable)
+{
+  kfreewalk(pagetable);
+}
 // Given a parent process's page table, copy
 // its memory into a child's page table.
 // Copies both the page table and the

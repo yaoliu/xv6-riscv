@@ -117,6 +117,7 @@ usertrapret(void)
   
   // set up trapframe values that uservec will need when
   // the process next re-enters the kernel.
+  // 保存内核页表 等进程进入内核态的时候好使用这个页表
   p->trapframe->kernel_satp = r_satp();         // kernel page table
   p->trapframe->kernel_sp = p->kstack + PGSIZE; // process's kernel stack
   p->trapframe->kernel_trap = (uint64)usertrap;

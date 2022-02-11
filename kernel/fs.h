@@ -24,10 +24,9 @@ struct superblock {  // 超级块
 
 #define FSMAGIC 0x10203040
 
-#define NDIRECT 11
+#define NDIRECT 12
 #define NINDIRECT (BSIZE / sizeof(uint))
-// 11 + 256 + 256 * 256
-#define MAXFILE (NDIRECT + NINDIRECT + NINDIRECT * NINDIRECT)
+#define MAXFILE (NDIRECT + NINDIRECT)
 
 // On-disk inode structure // 存储在磁盘中的索引节点的数据结构
 struct dinode {
